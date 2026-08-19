@@ -1,51 +1,97 @@
 const mongoose = require("mongoose");
 
-const securityCompanySchema = new mongoose.Schema(
-  {
-    name: {
-      type: String,
-      required: true,
-    },
 
-    phone: {
-      type: String,
-      required: true,
+const securityCompanySchema = new mongoose.Schema(
+{
+    companyName:{
+        type:String,
+        required:true
     },
 
     email: {
-      type: String,
-      default: "",
+        type: String,
+        required: true,
+        unique: true,
+        lowercase: true,
+        trim: true
     },
 
-    address: {
-      type: String,
-      default: "",
+    phoneNumber:{
+        type:String,
+        required:true
     },
 
-    city: {
-      type: String,
-      required: true,
+    psiraCompanyNumber:{
+        type:String,
+        required:true,
+        unique:true
     },
 
-    province: {
-      type: String,
-      required: true,
+
+    registrationNumber:{
+        type:String,
+        required:true,
+        unique:true
     },
 
-    description: {
-      type: String,
-      default: "",
+
+    address:{
+        type:String,
+        required:true
     },
 
-    active: {
-      type: Boolean,
-      default: true,
+
+    contactPerson:{
+        type:String,
+        required:true
     },
-  },
-  { timestamps: true }
-);
+
+
+    password:{
+        type:String,
+        required:true
+    },
+
+
+    role:{
+        type:String,
+        default:"security_company"
+    },
+    approvalStatus: {
+        type: String,
+        enum: ["pending", "approved", "rejected"],
+        default: "pending",
+      },
+      
+      approvedAt: {
+        type: Date,
+        default: null,
+      },
+
+
+    otp:String,
+
+    otpExpires:Date,
+
+
+    isVerified:{
+        type:Boolean,
+        default:false
+    },
+
+
+    lastOtpVerifiedAt:{
+        type:Date,
+        default:null
+    }
+
+},
+{
+ timestamps:true
+});
+
 
 module.exports = mongoose.model(
-  "SecurityCompany",
-  securityCompanySchema
+"SecurityCompany",
+securityCompanySchema
 );

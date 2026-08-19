@@ -33,7 +33,11 @@ exports.registerUser = async (req, res) => {
         }
 
         // 3. Check existing user
-        const existingUser = await User.findOne({ email });
+        const normalizedEmail = email.trim().toLowerCase();
+
+        const existingUser = await User.findOne({
+            email: normalizedEmail
+        });
         if (existingUser) {
             return res.status(400).json({ message: "Email already exists" });
         }
@@ -71,15 +75,26 @@ exports.registerUser = async (req, res) => {
 
 exports.loginUser = async (req, res) => {
   try {
-      const { email, password } = req.body;
+    const {
+      email,
+      password,
+      role,
+  } = req.body;
 
       const user = await User.findOne({ email });
+
+     
 
       if (!user) {
           return res.status(400).json({
               message: "Invalid credentials",
           });
       }
+      if (role && user.role !== role) {
+        return res.status(403).json({
+            message: "Invalid account type.",
+        });
+    }
 
       const isMatch = await bcrypt.compare(password, user.password);
 

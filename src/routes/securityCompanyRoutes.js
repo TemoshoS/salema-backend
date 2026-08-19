@@ -1,34 +1,97 @@
 const express = require("express");
-
 const router = express.Router();
 
-const securityCompanyController = require(
-  "../controllers/securityCompanyController"
-);
+const {
+    registerSecurityCompany,
+    loginSecurityCompany,
+    verifyOtp,
+    logoutSecurityCompany,
+    changePassword,
+    forgotPassword,
+    resetPassword,
+    resendOtp,
+    getProfile,
+    updateProfile,
+    getAllSecurityCompanies,
+} = require("../controllers/securityCompanyController");
 
+
+const authMiddleware = require("../middleware/authMiddleware");
+
+
+// =============================
+// Security Company Auth Routes
+// =============================
+
+// Register company
 router.post(
-  "/register",
-  securityCompanyController.registerCompany
+    "/register",
+    registerSecurityCompany
 );
 
-router.get(
-  "/",
-  securityCompanyController.getCompanies
+
+// Login company
+router.post(
+    "/login",
+    loginSecurityCompany
 );
 
-router.get(
-  "/:id",
-  securityCompanyController.getCompany
+
+// Verify OTP
+router.post(
+    "/verify-otp",
+    verifyOtp
 );
 
+
+// Logout
+router.post(
+    "/logout",
+    logoutSecurityCompany
+);
+
+
+// Forgot password
+router.post(
+    "/forgot-password",
+    forgotPassword
+);
+
+
+// Reset password
+router.post(
+    "/reset-password",
+    resetPassword
+);
+
+
+// Change password (protected)
 router.put(
-  "/:id",
-  securityCompanyController.updateCompany
+    "/change-password",
+    authMiddleware,
+    changePassword
 );
 
-router.delete(
-  "/:id",
-  securityCompanyController.deleteCompany
+
+// Get company profile (protected)
+router.get(
+    "/profile",
+    authMiddleware,
+    getProfile
 );
+
+router.post("/resend-otp", resendOtp);
+
+// Update company profile (protected)
+router.put(
+    "/profile",
+    authMiddleware,
+    updateProfile
+);
+
+router.get("/all", getAllSecurityCompanies);
+
+
+
 
 module.exports = router;
