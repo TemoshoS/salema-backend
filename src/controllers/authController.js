@@ -1,7 +1,10 @@
 const bcrypt = require("bcryptjs");
 const User = require("../models/User");
 const jwt = require("jsonwebtoken");
-const sendEmail = require("../utils/email");
+const {
+  sendUserLoginOtpEmail,
+  sendUserPasswordResetEmail,
+} = require("../utils/email");
 
 exports.registerUser = async (req, res) => {
     try {
@@ -146,10 +149,12 @@ exports.loginUser = async (req, res) => {
 
       await user.save();
 
-      await sendEmail(
-          user.email,
-          "Salema Login OTP",
-          `Your OTP code is: ${otp}. It expires in 5 minutes.`
+      await sendUserLoginOtpEmail(
+        {
+          contactPerson: user.fullName,
+          email: user.email,
+        },
+        otp
       );
 
       return res.status(200).json({
@@ -306,10 +311,12 @@ exports.forgotPassword = async (req, res) => {
   
       await user.save();
   
-      await sendEmail(
-        user.email,
-        "Salema Password Reset",
-        `Your password reset code is ${otp}. It expires in 5 minutes.`
+      await sendUserPasswordResetEmail(
+        {
+          contactPerson: user.fullName,
+          email: user.email,
+        },
+        otp
       );
   
       res.json({

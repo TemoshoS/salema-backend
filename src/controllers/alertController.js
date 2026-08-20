@@ -1,6 +1,7 @@
 const Contact = require("../models/Contact");
 const User = require("../models/User");
 const SecurityCompany = require("../models/SecurityCompany");
+const Alert = require("../models/Alert");
 const twilio = require("../utils/twilio");
 
 exports.sendSOS = async (req, res) => {
@@ -31,7 +32,7 @@ exports.sendSOS = async (req, res) => {
         const contacts = await Contact.find({ userId });
 
         // ==========================================
-        // 3. FIND SELECTED SECURITY COMPANY
+        // 3. FIND SECURITY COMPANY IF SELECTED
         // ==========================================
 
         let securityCompany = null;
@@ -41,10 +42,13 @@ exports.sendSOS = async (req, res) => {
                 securityCompanyId
             );
 
+            // Old/deleted company ID in AsyncStorage
             if (!securityCompany) {
-                return res.status(404).json({
-                    message: "Selected security company not found",
-                });
+                console.log(
+                    "Selected security company no longer exists. Continuing with trusted contacts."
+                );
+
+                securityCompany = null;
             }
         }
 
@@ -53,9 +57,9 @@ exports.sendSOS = async (req, res) => {
         // ==========================================
 
         if (!contacts.length && !securityCompany) {
-            return res.status(404).json({
+            return res.status(400).json({
                 message:
-                    "No trusted contacts or security company selected",
+                    "Please add at least one trusted contact or select a security company.",
             });
         }
 
@@ -64,7 +68,8 @@ exports.sendSOS = async (req, res) => {
         // ==========================================
 
         const location =
-            latitude && longitude
+            latitude !== undefined &&
+            longitude !== undefined
                 ? `https://maps.google.com/?q=${latitude},${longitude}`
                 : "Location unavailable";
 
@@ -81,24 +86,49 @@ exports.sendSOS = async (req, res) => {
         const results = [];
 
         // ==========================================
-        // 7. SEND TO TRUSTED CONTACTS
+        // 7. CREATE ALERT HISTORY
+        // ==========================================
+
+        const alert = await Alert.create({
+            userId: user._id,
+
+            latitude,
+            longitude,
+
+            locationUrl: location,
+
+            message,
+
+            triggerType: "button",
+
+            securityCompany: securityCompany
+                ? {
+                      id: securityCompany._id,
+                      name: securityCompany.companyName,
+                      phone: securityCompany.phoneNumber,
+                  }
+                : undefined,
+
+            recipients: [],
+        });
+
+        // ==========================================
+        // 8. SEND TO TRUSTED CONTACTS
         // ==========================================
 
         for (const contact of contacts) {
-            console.log("====================================");
-            console.log(`📱 Sending SMS to ${contact.name}`);
-            console.log(`📞 ${contact.phone}`);
-            console.log("------------------------------------");
-            console.log(message);
-            console.log("====================================\n");
-
             try {
+                console.log(
+                    `📱 Sending SOS SMS to ${contact.name} (${contact.phone})`
+                );
+
                 const sms = await twilio.messages.create({
                     body: message,
                     from: process.env.TWILIO_PHONE_NUMBER,
                     to: contact.phone,
                 });
 
+                // Response result
                 results.push({
                     type: "trusted_contact",
                     name: contact.name,
@@ -106,13 +136,33 @@ exports.sendSOS = async (req, res) => {
                     sid: sms.sid,
                     status: "sent",
                 });
+
+                // Save to database
+                alert.recipients.push({
+                    type: "trusted_contact",
+                    name: contact.name,
+                    phone: contact.phone,
+                    status: "sent",
+                    twilioSid: sms.sid,
+                });
+
             } catch (error) {
                 console.error(
                     `Failed to send SMS to ${contact.phone}:`,
                     error.message
                 );
 
+                // Response result
                 results.push({
+                    type: "trusted_contact",
+                    name: contact.name,
+                    phone: contact.phone,
+                    status: "failed",
+                    error: error.message,
+                });
+
+                // Save failed SMS to database
+                alert.recipients.push({
                     type: "trusted_contact",
                     name: contact.name,
                     phone: contact.phone,
@@ -123,28 +173,22 @@ exports.sendSOS = async (req, res) => {
         }
 
         // ==========================================
-        // 8. SEND TO SELECTED SECURITY COMPANY
+        // 9. SEND TO SECURITY COMPANY IF SELECTED
         // ==========================================
 
         if (securityCompany) {
-            console.log("====================================");
-            console.log(
-                `🏢 Sending SMS to ${securityCompany.companyName}`
-            );
-            console.log(
-                `📞 ${securityCompany.phoneNumber}`
-            );
-            console.log("------------------------------------");
-            console.log(message);
-            console.log("====================================\n");
-
             try {
+                console.log(
+                    `🏢 Sending SOS SMS to ${securityCompany.companyName} (${securityCompany.phoneNumber})`
+                );
+
                 const sms = await twilio.messages.create({
                     body: message,
                     from: process.env.TWILIO_PHONE_NUMBER,
                     to: securityCompany.phoneNumber,
                 });
 
+                // Response result
                 results.push({
                     type: "security_company",
                     companyName: securityCompany.companyName,
@@ -152,15 +196,35 @@ exports.sendSOS = async (req, res) => {
                     sid: sms.sid,
                     status: "sent",
                 });
+
+                // Save to database
+                alert.recipients.push({
+                    type: "security_company",
+                    name: securityCompany.companyName,
+                    phone: securityCompany.phoneNumber,
+                    status: "sent",
+                    twilioSid: sms.sid,
+                });
+
             } catch (error) {
                 console.error(
                     `Failed to send SMS to ${securityCompany.phoneNumber}:`,
                     error.message
                 );
 
+                // Response result
                 results.push({
                     type: "security_company",
                     companyName: securityCompany.companyName,
+                    phone: securityCompany.phoneNumber,
+                    status: "failed",
+                    error: error.message,
+                });
+
+                // Save failed SMS to database
+                alert.recipients.push({
+                    type: "security_company",
+                    name: securityCompany.companyName,
                     phone: securityCompany.phoneNumber,
                     status: "failed",
                     error: error.message,
@@ -169,12 +233,49 @@ exports.sendSOS = async (req, res) => {
         }
 
         // ==========================================
-        // 9. RESPONSE
+        // 10. CALCULATE STATUS
         // ==========================================
 
-        res.json({
-            message: "SOS alert processed successfully",
+        const sentCount = results.filter(
+            (result) => result.status === "sent"
+        ).length;
+
+        const failedCount = results.filter(
+            (result) => result.status === "failed"
+        ).length;
+
+        // ==========================================
+        // 11. UPDATE ALERT STATUS
+        // ==========================================
+
+        if (sentCount > 0 && failedCount === 0) {
+            alert.status = "sent";
+        } else if (sentCount > 0 && failedCount > 0) {
+            alert.status = "partial";
+        } else {
+            alert.status = "failed";
+        }
+
+        // ==========================================
+        // 12. SAVE ALERT HISTORY
+        // ==========================================
+
+        await alert.save();
+
+        // ==========================================
+        // 13. RESPONSE
+        // ==========================================
+
+        return res.json({
+            message:
+                sentCount > 0
+                    ? "SOS alert sent successfully"
+                    : "SOS alert could not be delivered",
+
+            alertId: alert._id,
+
             user: user.fullName,
+
             securityCompany: securityCompany
                 ? {
                       id: securityCompany._id,
@@ -182,13 +283,41 @@ exports.sendSOS = async (req, res) => {
                       phone: securityCompany.phoneNumber,
                   }
                 : null,
+
+            sentCount,
+            failedCount,
+
             results,
         });
+
     } catch (error) {
         console.error("SOS ERROR:", error);
 
-        res.status(500).json({
+        return res.status(500).json({
             message: "Failed to process SOS alert",
+            error: error.message,
+        });
+    }
+
+    
+};
+
+exports.getAllAlerts = async (req, res) => {
+    try {
+        const alerts = await Alert.find()
+            .populate("userId", "fullName email phoneNumber")
+            .sort({ createdAt: -1 });
+
+        return res.status(200).json({
+            message: "Alerts retrieved successfully",
+            count: alerts.length,
+            alerts,
+        });
+    } catch (error) {
+        console.error("GET ALL ALERTS ERROR:", error);
+
+        return res.status(500).json({
+            message: "Failed to retrieve alerts",
             error: error.message,
         });
     }

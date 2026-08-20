@@ -27,8 +27,111 @@ const sendEmail = async ({
     html,
   });
 };
+// =====================================================
+// 1. New User Registration
+// Sends to User
+// =====================================================
+const sendUserLoginOtpEmail = async (user, otp) => {
+  const subject = "Salema Login Verification Code";
 
+  const text = `
+Hello ${user.fullName},
 
+Your Salema login verification code is:
+
+${otp}
+
+This code will expire in 5 minutes.
+
+If you did not attempt to log in, please secure your account.
+
+Regards,
+Salema Security
+`;
+
+  const html = `
+    <h2>Login Verification</h2>
+
+    <p>Hello <strong>${user.fullName}</strong>,</p>
+
+    <p>Your Salema login verification code is:</p>
+
+    <h1>${otp}</h1>
+
+    <p>This code will expire in <strong>5 minutes</strong>.</p>
+
+    <p>
+      If you did not attempt to log in, please secure your account.
+    </p>
+
+    <br />
+
+    <p>
+      Regards,<br />
+      <strong>Salema Security</strong>
+    </p>
+  `;
+
+  await sendEmail({
+    to: user.email,
+    subject,
+    text,
+    html,
+  });
+};
+
+// =====================================================
+// OTP
+// Reset Password
+// =====================================================
+const sendUserPasswordResetEmail = async (user, otp) => {
+  const subject = "Salema Password Reset";
+
+  const text = `
+Hello ${user.fullName},
+
+Your Salema password reset code is:
+
+${otp}
+
+This code will expire in 5 minutes.
+
+If you did not request a password reset, please ignore this email.
+
+Regards,
+Salema Security
+`;
+
+  const html = `
+    <h2>Password Reset</h2>
+
+    <p>Hello <strong>${user.fullName}</strong>,</p>
+
+    <p>Your Salema password reset code is:</p>
+
+    <h1>${otp}</h1>
+
+    <p>This code will expire in <strong>5 minutes</strong>.</p>
+
+    <p>
+      If you did not request a password reset, please ignore this email.
+    </p>
+
+    <br />
+
+    <p>
+      Regards,<br />
+      <strong>Salema Security</strong>
+    </p>
+  `;
+
+  await sendEmail({
+    to: user.email,
+    subject,
+    text,
+    html,
+  });
+};
 // =====================================================
 // 1. New Security Company Registration
 // Sends to ADMIN
@@ -443,6 +546,8 @@ Salema Security
 
 module.exports = {
   sendEmail,
+  sendUserLoginOtpEmail,
+  sendUserPasswordResetEmail,
   sendCompanyRegistrationEmail,
   sendCompanyApprovedEmail,
   sendCompanyRejectedEmail,
