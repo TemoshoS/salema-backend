@@ -69,7 +69,7 @@ exports.sendSOS = async (req, res) => {
 
         const location =
             latitude !== undefined &&
-            longitude !== undefined
+                longitude !== undefined
                 ? `https://maps.google.com/?q=${latitude},${longitude}`
                 : "Location unavailable";
 
@@ -103,10 +103,10 @@ exports.sendSOS = async (req, res) => {
 
             securityCompany: securityCompany
                 ? {
-                      id: securityCompany._id,
-                      name: securityCompany.companyName,
-                      phone: securityCompany.phoneNumber,
-                  }
+                    id: securityCompany._id,
+                    name: securityCompany.companyName,
+                    phone: securityCompany.phoneNumber,
+                }
                 : undefined,
 
             recipients: [],
@@ -278,10 +278,10 @@ exports.sendSOS = async (req, res) => {
 
             securityCompany: securityCompany
                 ? {
-                      id: securityCompany._id,
-                      name: securityCompany.companyName,
-                      phone: securityCompany.phoneNumber,
-                  }
+                    id: securityCompany._id,
+                    name: securityCompany.companyName,
+                    phone: securityCompany.phoneNumber,
+                }
                 : null,
 
             sentCount,
@@ -299,7 +299,7 @@ exports.sendSOS = async (req, res) => {
         });
     }
 
-    
+
 };
 
 exports.getAllAlerts = async (req, res) => {
@@ -318,6 +318,87 @@ exports.getAllAlerts = async (req, res) => {
 
         return res.status(500).json({
             message: "Failed to retrieve alerts",
+            error: error.message,
+        });
+    }
+};
+exports.getSecurityCompanyAlerts = async (req, res) => {
+    try {
+        // Logged-in security company
+        const companyId = req.company._id;
+
+        const alerts = await Alert.find({
+            "securityCompany.id": companyId,
+        })
+            .populate(
+                "userId",
+                "fullName email phoneNumber"
+            )
+            .sort({ createdAt: -1 });
+
+        return res.status(200).json({
+            message:
+                "Security company alerts retrieved successfully",
+            count: alerts.length,
+            alerts,
+        });
+
+    } catch (error) {
+        console.error(
+            "GET SECURITY COMPANY ALERTS ERROR:",
+            error
+        );
+
+        return res.status(500).json({
+            message:
+                "Failed to retrieve security company alerts",
+            error: error.message,
+        });
+    }
+};
+exports.updateIncidentStatus = async (req, res) => {
+    try {
+        const { alertId } = req.params;
+        const { status } = req.body;
+
+        const allowedStatuses = [
+            "pending",
+            "acknowledged",
+            "responding",
+            "resolved",
+        ];
+
+        if (!allowedStatuses.includes(status)) {
+            return res.status(400).json({
+                message: "Invalid incident status",
+            });
+        }
+
+        const alert = await Alert.findById(alertId);
+
+        if (!alert) {
+            return res.status(404).json({
+                message: "Incident not found",
+            });
+        }
+
+        alert.incidentStatus = status;
+
+        await alert.save();
+
+        return res.status(200).json({
+            message: "Incident status updated successfully",
+            alert,
+        });
+
+    } catch (error) {
+        console.error(
+            "UPDATE INCIDENT STATUS ERROR:",
+            error
+        );
+
+        return res.status(500).json({
+            message: "Failed to update incident status",
             error: error.message,
         });
     }

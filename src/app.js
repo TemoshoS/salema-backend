@@ -11,6 +11,7 @@ const securityCompanyRoutes = require("./routes/securityCompanyRoutes");
 const securityOfficerRoutes = require("./routes/securityOfficerRoutes");
 const userSecurityCompanyRoutes = require("./routes/userSecurityCompanyRoutes");
 const adminRoutes = require("./routes/adminRoutes");
+const branchRoutes = require("./routes/branchRoutes");
 
 const app = express();
 
@@ -31,5 +32,6 @@ app.use("/api/security-company",securityCompanyRoutes);
 app.use("/api/security-company/officers",securityOfficerRoutes);
 app.use("/api/user-security-companies",userSecurityCompanyRoutes);
 app.use("/api/admin",adminRoutes);
+app.use("/api/branches", branchRoutes);
 
 module.exports = app;

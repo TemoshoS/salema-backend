@@ -62,6 +62,16 @@ const alertSchema = new mongoose.Schema(
             enum: ["pending", "sent", "partial", "failed"],
             default: "pending",
         },
+        incidentStatus: {
+            type: String,
+            enum: [
+                "new",
+                "acknowledged",
+                "responding",
+                "resolved",
+            ],
+            default: "new",
+        },
     },
     {
         timestamps: true,
