@@ -1,6 +1,7 @@
 const Contact = require("../models/Contact");
 const User = require("../models/User");
 const SecurityCompany = require("../models/SecurityCompany");
+const SecurityOfficer = require("../models/SecurityOfficer");
 const Alert = require("../models/Alert");
 const twilio = require("../utils/twilio");
 
@@ -362,7 +363,7 @@ exports.updateIncidentStatus = async (req, res) => {
         const { status } = req.body;
 
         const allowedStatuses = [
-            "pending",
+            "new",
             "acknowledged",
             "responding",
             "resolved",
@@ -374,6 +375,10 @@ exports.updateIncidentStatus = async (req, res) => {
             });
         }
 
+        // ==========================================
+        // FIND INCIDENT
+        // ==========================================
+
         const alert = await Alert.findById(alertId);
 
         if (!alert) {
@@ -382,13 +387,72 @@ exports.updateIncidentStatus = async (req, res) => {
             });
         }
 
+        // ==========================================
+        // GET LOGGED-IN OFFICER
+        // ==========================================
+
+        const officer = await SecurityOfficer.findById(
+            req.officer._id
+        );
+
+        if (!officer) {
+            return res.status(404).json({
+                message: "Officer not found",
+            });
+        }
+
+        // ==========================================
+        // CHECK INCIDENT IS ASSIGNED TO THIS OFFICER
+        // ==========================================
+
+        if (
+            !alert.assignedOfficer ||
+            alert.assignedOfficer.toString() !==
+                officer._id.toString()
+        ) {
+            return res.status(403).json({
+                message:
+                    "You are not allowed to update this incident",
+            });
+        }
+
+        // ==========================================
+        // CHECK OFFICER BELONGS TO COMPANY
+        // ==========================================
+
+        if (!officer.companyId) {
+            return res.status(403).json({
+                message:
+                    "Officer is not associated with a security company",
+            });
+        }
+
+        // ==========================================
+        // UPDATE STATUS
+        // ==========================================
+
         alert.incidentStatus = status;
 
         await alert.save();
 
+        // ==========================================
+        // RETURN UPDATED INCIDENT
+        // ==========================================
+
+        const updatedAlert = await Alert.findById(alert._id)
+            .populate(
+                "userId",
+                "fullName email phoneNumber"
+            )
+            .populate(
+                "assignedOfficer",
+                "firstName lastName email phoneNumber rank status"
+            );
+
         return res.status(200).json({
-            message: "Incident status updated successfully",
-            alert,
+            message:
+                "Incident status updated successfully",
+            alert: updatedAlert,
         });
 
     } catch (error) {
@@ -398,7 +462,279 @@ exports.updateIncidentStatus = async (req, res) => {
         );
 
         return res.status(500).json({
-            message: "Failed to update incident status",
+            message:
+                "Failed to update incident status",
+            error: error.message,
+        });
+    }
+};
+
+exports.assignOfficer = async (req, res) => {
+    try {
+        const { alertId } = req.params;
+        const { officerId } = req.body;
+
+        // ==========================================
+        // VALIDATE OFFICER ID
+        // ==========================================
+
+        if (!officerId) {
+            return res.status(400).json({
+                message: "Officer ID is required",
+            });
+        }
+
+        // ==========================================
+        // FIND ALERT
+        // ==========================================
+
+        const alert = await Alert.findById(alertId);
+
+        if (!alert) {
+            return res.status(404).json({
+                message: "Incident not found",
+            });
+        }
+
+        // ==========================================
+        // CHECK INCIDENT BELONGS TO LOGGED-IN COMPANY
+        // ==========================================
+
+        if (
+            !alert.securityCompany?.id ||
+            alert.securityCompany.id.toString() !==
+                req.company._id.toString()
+        ) {
+            return res.status(403).json({
+                message:
+                    "You are not allowed to manage this incident",
+            });
+        }
+
+        // ==========================================
+        // FIND OFFICER
+        // ==========================================
+
+        const officer = await SecurityOfficer.findById(
+            officerId
+        );
+
+        if (!officer) {
+            return res.status(404).json({
+                message: "Officer not found",
+            });
+        }
+
+        // ==========================================
+        // CHECK OFFICER BELONGS TO LOGGED-IN COMPANY
+        // ==========================================
+
+        if (
+            officer.companyId.toString() !==
+            req.company._id.toString()
+        ) {
+            return res.status(403).json({
+                message:
+                    "This officer does not belong to your company",
+            });
+        }
+
+        // ==========================================
+        // ONLY ACTIVE OFFICERS CAN BE ASSIGNED
+        // ==========================================
+
+        if (officer.status !== "active") {
+            return res.status(400).json({
+                message:
+                    "Only active officers can be assigned to an incident",
+            });
+        }
+
+        // ==========================================
+        // ASSIGN OFFICER TO INCIDENT
+        // ==========================================
+
+        alert.assignedOfficer = officer._id;
+
+        // Company has acknowledged the incident
+        alert.incidentStatus = "acknowledged";
+
+        await alert.save();
+
+        // ==========================================
+        // FIND THE SOS USER
+        // ==========================================
+
+        const user = await User.findById(alert.userId);
+
+        // ==========================================
+        // GET INCIDENT LOCATION
+        // ==========================================
+
+        const location =
+            alert.locationUrl ||
+            (alert.latitude != null &&
+            alert.longitude != null
+                ? `https://maps.google.com/?q=${alert.latitude},${alert.longitude}`
+                : "Location unavailable");
+
+        // ==========================================
+        // CREATE OFFICER SMS MESSAGE
+        // ==========================================
+
+        const officerMessage =
+            `🚨 NEW EMERGENCY INCIDENT\n\n` +
+            `You have been assigned to an SOS incident.\n\n` +
+            `👤 User: ${user?.fullName || "Unknown User"}\n` +
+            `📞 Phone: ${user?.phoneNumber || "Not available"}\n\n` +
+            `📍 Location:\n${location}\n\n` +
+            `⚠️ Please respond immediately.`;
+
+        // ==========================================
+        // SEND SMS TO ASSIGNED OFFICER
+        // ==========================================
+
+        let notificationStatus = "not_sent";
+
+        try {
+            if (officer.phoneNumber) {
+                const sms = await twilio.messages.create({
+                    body: officerMessage,
+                    from: process.env.TWILIO_PHONE_NUMBER,
+                    to: officer.phoneNumber,
+                });
+
+                notificationStatus = "sent";
+
+                console.log(
+                    `🚨 Incident notification sent to officer ${officer.firstName} ${officer.lastName}: ${sms.sid}`
+                );
+            } else {
+                notificationStatus = "no_phone_number";
+
+                console.log(
+                    `Officer ${officer.firstName} ${officer.lastName} has no phone number`
+                );
+            }
+        } catch (smsError) {
+            notificationStatus = "failed";
+
+            console.error(
+                "FAILED TO NOTIFY ASSIGNED OFFICER:",
+                smsError.message
+            );
+        }
+
+        // ==========================================
+        // GET UPDATED ALERT WITH DETAILS
+        // ==========================================
+
+        const updatedAlert = await Alert.findById(
+            alert._id
+        )
+            .populate(
+                "userId",
+                "fullName email phoneNumber"
+            )
+            .populate(
+                "assignedOfficer",
+                "firstName lastName email phoneNumber rank status"
+            );
+
+        // ==========================================
+        // SUCCESS RESPONSE
+        // ==========================================
+
+        return res.status(200).json({
+            message: "Officer assigned successfully",
+            notificationStatus,
+            alert: updatedAlert,
+        });
+    } catch (error) {
+        console.error(
+            "ASSIGN OFFICER ERROR:",
+            error
+        );
+
+        return res.status(500).json({
+            message: "Failed to assign officer",
+            error: error.message,
+        });
+    }
+};
+
+exports.getOfficerIncidents = async (req, res) => {
+    try {
+        const { officerId } = req.params;
+
+        const alerts = await Alert.find({
+            assignedOfficer: officerId,
+            incidentStatus: {
+                $in: [
+                    "acknowledged",
+                    "responding",
+                ],
+            },
+        })
+            .populate(
+                "userId",
+                "fullName email phoneNumber"
+            )
+            .populate(
+                "assignedOfficer",
+                "firstName lastName email phoneNumber rank status"
+            )
+            .sort({ createdAt: -1 });
+
+        return res.status(200).json({
+            message: "Officer incidents retrieved successfully",
+            count: alerts.length,
+            alerts,
+        });
+
+    } catch (error) {
+        console.error(
+            "GET OFFICER INCIDENTS ERROR:",
+            error
+        );
+
+        return res.status(500).json({
+            message: "Failed to retrieve officer incidents",
+            error: error.message,
+        });
+    }
+};
+
+exports.getOfficerAlerts = async (req, res) => {
+    try {
+        const officerId = req.officer._id;
+
+        const alerts = await Alert.find({
+            assignedOfficer: officerId,
+        })
+            .populate(
+                "userId",
+                "fullName email phoneNumber"
+            )
+            .populate(
+                "assignedOfficer",
+                "firstName lastName email phoneNumber rank status"
+            )
+            .sort({ createdAt: -1 });
+
+        return res.status(200).json({
+            message: "Officer incidents retrieved successfully",
+            count: alerts.length,
+            alerts,
+        });
+    } catch (error) {
+        console.error(
+            "GET OFFICER ALERTS ERROR:",
+            error
+        );
+
+        return res.status(500).json({
+            message: "Failed to retrieve officer incidents",
             error: error.message,
         });
     }

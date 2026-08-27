@@ -13,11 +13,11 @@ const {
     getProfile,
     updateProfile,
     getAllSecurityCompanies,
+    getDashboardStats,
 } = require("../controllers/securityCompanyController");
 
-
 const authMiddleware = require("../middleware/authMiddleware");
-
+const authCompany = require("../middleware/authCompany")
 
 // =============================
 // Security Company Auth Routes
@@ -92,6 +92,10 @@ router.put(
 router.get("/all", getAllSecurityCompanies);
 
 
-
+router.get(
+    "/dashboard-stats",
+    authCompany,
+    getDashboardStats
+);
 
 module.exports = router;

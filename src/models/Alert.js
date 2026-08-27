@@ -33,6 +33,13 @@ const alertSchema = new mongoose.Schema(
             phone: String,
         },
 
+        // Officer assigned by the security company
+        assignedOfficer: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "SecurityOfficer",
+            default: null,
+        },
+
         recipients: [
             {
                 type: {
@@ -62,6 +69,7 @@ const alertSchema = new mongoose.Schema(
             enum: ["pending", "sent", "partial", "failed"],
             default: "pending",
         },
+
         incidentStatus: {
             type: String,
             enum: [

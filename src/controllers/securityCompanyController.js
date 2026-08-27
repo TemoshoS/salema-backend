@@ -1,6 +1,11 @@
 const bcrypt = require("bcryptjs");
 const SecurityCompany = require("../models/SecurityCompany");
 const jwt = require("jsonwebtoken");
+
+const Branch = require("../models/Branch");
+const SecurityOfficer = require("../models/SecurityOfficer");
+const Alert = require("../models/Alert");
+
 const {
   sendCompanyRegistrationEmail,
   sendCompanyApprovedEmail,
@@ -986,6 +991,94 @@ exports.getAllSecurityCompanies = async (req, res) => {
   } catch (error) {
     res.status(500).json({
       message: error.message,
+    });
+  }
+};
+
+// =============================
+// Get Security Company Dashboard Statistics
+// =============================
+
+exports.getDashboardStats = async (req, res) => {
+  try {
+    const companyId = req.company._id;
+
+    // =============================
+    // SECURITY OFFICERS
+    // =============================
+
+    const officerCount = await SecurityOfficer.countDocuments({
+      companyId,
+    });
+
+    // =============================
+    // BRANCHES
+    // =============================
+
+    const Branch = require("../models/Branch");
+
+    const branchCount = await Branch.countDocuments({
+      companyId,
+    });
+
+    // =============================
+    // INCIDENTS
+    // =============================
+
+    const Alert = require("../models/Alert");
+
+    const incidentCount = await Alert.countDocuments({
+      "securityCompany.id": companyId,
+    });
+
+    // =============================
+    // ACTIVE INCIDENTS
+    // =============================
+
+    const activeIncidentCount = await Alert.countDocuments({
+      "securityCompany.id": companyId,
+      incidentStatus: {
+        $in: [
+          "new",
+          "acknowledged",
+          "responding",
+        ],
+      },
+    });
+
+    // =============================
+    // ASSIGNMENTS
+    // =============================
+
+    const assignmentCount = await Alert.countDocuments({
+      "securityCompany.id": companyId,
+      assignedOfficer: {
+        $exists: true,
+        $ne: null,
+      },
+    });
+
+    return res.status(200).json({
+      message: "Dashboard statistics retrieved successfully",
+
+      stats: {
+        officers: officerCount,
+        branches: branchCount,
+        incidents: incidentCount,
+        activeIncidents: activeIncidentCount,
+        assignments: assignmentCount,
+      },
+    });
+
+  } catch (error) {
+    console.error(
+      "GET DASHBOARD STATS ERROR:",
+      error
+    );
+
+    return res.status(500).json({
+      message: "Failed to retrieve dashboard statistics",
+      error: error.message,
     });
   }
 };
