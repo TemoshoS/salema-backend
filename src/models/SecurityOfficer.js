@@ -50,7 +50,7 @@ const securityOfficerSchema = new mongoose.Schema(
     branchId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Branch",
-      default: null,
+      required: true,
     },
 
     password: {
