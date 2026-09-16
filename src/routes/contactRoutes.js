@@ -1,11 +1,20 @@
 const express = require("express");
+
 const router = express.Router();
 
 const contactController = require("../controllers/contactController");
+const protect = require("../middleware/authMiddleware");
 
-router.post("/add", contactController.addContact);
-router.get("/user/:userId", contactController.getUserContacts);
-router.delete("/:id", contactController.deleteContact);
-router.put("/:id", contactController.updateContact);
+// ADD CONTACT
+router.post("/add", protect, contactController.addContact);
+
+// GET USER CONTACTS
+router.get("/user/:userId", protect, contactController.getUserContacts);
+
+// DELETE CONTACT
+router.delete("/:id", protect, contactController.deleteContact);
+
+// UPDATE CONTACT
+router.put("/:id", protect, contactController.updateContact);
 
 module.exports = router;

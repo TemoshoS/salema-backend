@@ -4,10 +4,11 @@ module.exports = async (req, res, next) => {
     try {
         const auth = req.headers.authorization;
 
-        if (!auth)
+        if (!auth || !auth.startsWith("Bearer ")) {
             return res.status(401).json({
                 message: "Unauthorized",
             });
+        }
 
         const token = auth.split(" ")[1];
 
@@ -19,6 +20,7 @@ module.exports = async (req, res, next) => {
         req.user = decoded;
 
         next();
+
     } catch (err) {
         return res.status(401).json({
             message: "Invalid token",

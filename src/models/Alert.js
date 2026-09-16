@@ -53,13 +53,28 @@ const alertSchema = new mongoose.Schema(
                 name: String,
                 phone: String,
 
+                // SMS delivery status
                 status: {
                     type: String,
                     enum: ["pending", "sent", "failed"],
                     default: "pending",
                 },
 
+                // Push notification delivery status
+                pushStatus: {
+                    type: String,
+                    enum: [
+                        "pending",
+                        "sent",
+                        "failed",
+                        "no_push_token",
+                        "not_registered",
+                    ],
+                    default: "pending",
+                },
+
                 twilioSid: String,
+
                 error: String,
             },
         ],

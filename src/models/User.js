@@ -11,6 +11,9 @@ const userSchema = new mongoose.Schema(
             trim: true
         },
         phoneNumber: { type: String, required: true },
+
+        pushToken: { type: String, default: null,},
+
         address: { type: String, required: true },
 
         password: { type: String, required: true },

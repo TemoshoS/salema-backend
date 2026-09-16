@@ -4,6 +4,7 @@ const SecurityCompany = require("../models/SecurityCompany");
 const SecurityOfficer = require("../models/SecurityOfficer");
 const Alert = require("../models/Alert");
 const twilio = require("../utils/twilio");
+const { sendPushNotification } = require("../utils/pushNotification");
 
 exports.sendSOS = async (req, res) => {
     try {
@@ -30,7 +31,12 @@ exports.sendSOS = async (req, res) => {
         // 2. FIND TRUSTED CONTACTS
         // ==========================================
 
-        const contacts = await Contact.find({ userId });
+        const contacts = await Contact.find({
+            userId,
+        }).populate(
+            "contactUserId",
+            "fullName email phoneNumber pushToken"
+        );
 
         // ==========================================
         // 3. FIND SECURITY COMPANY IF SELECTED
@@ -118,6 +124,15 @@ exports.sendSOS = async (req, res) => {
         // ==========================================
 
         for (const contact of contacts) {
+
+            // ------------------------------------------
+            // SMS
+            // ------------------------------------------
+
+            let smsStatus = "failed";
+            let smsSid = null;
+            let smsError = null;
+
             try {
                 console.log(
                     `📱 Sending SOS SMS to ${contact.name} (${contact.phone})`
@@ -129,48 +144,127 @@ exports.sendSOS = async (req, res) => {
                     to: contact.phone,
                 });
 
-                // Response result
-                results.push({
-                    type: "trusted_contact",
-                    name: contact.name,
-                    phone: contact.phone,
-                    sid: sms.sid,
-                    status: "sent",
-                });
+                smsStatus = "sent";
+                smsSid = sms.sid;
 
-                // Save to database
-                alert.recipients.push({
-                    type: "trusted_contact",
-                    name: contact.name,
-                    phone: contact.phone,
-                    status: "sent",
-                    twilioSid: sms.sid,
-                });
-
-            } catch (error) {
-                console.error(
-                    `Failed to send SMS to ${contact.phone}:`,
-                    error.message
+                console.log(
+                    `✅ SOS SMS sent to ${contact.name}: ${sms.sid}`
                 );
 
-                // Response result
-                results.push({
-                    type: "trusted_contact",
-                    name: contact.name,
-                    phone: contact.phone,
-                    status: "failed",
-                    error: error.message,
-                });
+            } catch (error) {
+                smsError = error.message;
 
-                // Save failed SMS to database
-                alert.recipients.push({
-                    type: "trusted_contact",
-                    name: contact.name,
-                    phone: contact.phone,
-                    status: "failed",
-                    error: error.message,
-                });
+                console.error(
+                    `❌ Failed to send SMS to ${contact.phone}:`,
+                    error.message
+                );
             }
+
+            // ------------------------------------------
+            // PUSH NOTIFICATION
+            // ------------------------------------------
+
+            let pushStatus = "not_registered";
+
+            if (contact.contactUserId) {
+
+                if (contact.contactUserId.pushToken) {
+
+                    const pushResult =
+                        await sendPushNotification({
+                            pushToken:
+                                contact.contactUserId.pushToken,
+
+                            title: "🚨 EMERGENCY SOS",
+
+                            body:
+                                `${user.fullName} has triggered an SOS alert. ` +
+                                `Please check on them immediately.`,
+
+                            data: {
+                                type: "sos",
+
+                                alertId:
+                                    alert._id.toString(),
+
+                                userId:
+                                    user._id.toString(),
+
+                                latitude,
+                                longitude,
+
+                                locationUrl: location,
+                            },
+                        });
+
+                    pushStatus = pushResult.status;
+
+                    console.log(
+                        `📲 Push notification to ${contact.name}: ${pushStatus}`
+                    );
+
+                } else {
+                    pushStatus = "no_push_token";
+
+                    console.log(
+                        `⚠️ ${contact.name} is registered on Salema but has no push token`
+                    );
+                }
+
+            } else {
+
+                console.log(
+                    `ℹ️ ${contact.name} is not registered on Salema. SMS only.`
+                );
+            }
+
+            // ------------------------------------------
+            // RESPONSE RESULT
+            // ------------------------------------------
+
+            results.push({
+                type: "trusted_contact",
+
+                name: contact.name,
+
+                phone: contact.phone,
+
+                status: smsStatus,
+
+                sid: smsSid,
+
+                smsStatus,
+
+                pushStatus,
+
+                ...(smsError && {
+                    error: smsError,
+                }),
+            });
+
+            // ------------------------------------------
+            // SAVE SMS RESULT TO DATABASE
+            // ------------------------------------------
+
+            alert.recipients.push({
+                type: "trusted_contact",
+
+                name: contact.name,
+
+                phone: contact.phone,
+
+                // SMS status
+                status: smsStatus,
+
+                // Push notification status
+                pushStatus,
+
+                twilioSid: smsSid,
+
+                ...(smsError && {
+                    error: smsError,
+                }),
+            });
         }
 
         // ==========================================
@@ -189,44 +283,49 @@ exports.sendSOS = async (req, res) => {
                     to: securityCompany.phoneNumber,
                 });
 
-                // Response result
                 results.push({
                     type: "security_company",
-                    companyName: securityCompany.companyName,
-                    phone: securityCompany.phoneNumber,
+                    companyName:
+                        securityCompany.companyName,
+                    phone:
+                        securityCompany.phoneNumber,
                     sid: sms.sid,
                     status: "sent",
                 });
 
-                // Save to database
                 alert.recipients.push({
                     type: "security_company",
-                    name: securityCompany.companyName,
-                    phone: securityCompany.phoneNumber,
+                    name:
+                        securityCompany.companyName,
+                    phone:
+                        securityCompany.phoneNumber,
                     status: "sent",
                     twilioSid: sms.sid,
                 });
 
             } catch (error) {
+
                 console.error(
                     `Failed to send SMS to ${securityCompany.phoneNumber}:`,
                     error.message
                 );
 
-                // Response result
                 results.push({
                     type: "security_company",
-                    companyName: securityCompany.companyName,
-                    phone: securityCompany.phoneNumber,
+                    companyName:
+                        securityCompany.companyName,
+                    phone:
+                        securityCompany.phoneNumber,
                     status: "failed",
                     error: error.message,
                 });
 
-                // Save failed SMS to database
                 alert.recipients.push({
                     type: "security_company",
-                    name: securityCompany.companyName,
-                    phone: securityCompany.phoneNumber,
+                    name:
+                        securityCompany.companyName,
+                    phone:
+                        securityCompany.phoneNumber,
                     status: "failed",
                     error: error.message,
                 });
@@ -234,26 +333,61 @@ exports.sendSOS = async (req, res) => {
         }
 
         // ==========================================
-        // 10. CALCULATE STATUS
+        // 10. CALCULATE DELIVERY STATUS
         // ==========================================
 
-        const sentCount = results.filter(
-            (result) => result.status === "sent"
-        ).length;
+        // A trusted contact is considered successfully
+        // reached if either SMS OR push notification succeeds.
+        //
+        // Security company is SMS only.
 
-        const failedCount = results.filter(
-            (result) => result.status === "failed"
-        ).length;
+        const deliveredResults = results.filter((result) => {
+            // Trusted contact
+            if (result.type === "trusted_contact") {
+                return (
+                    result.smsStatus === "sent" ||
+                    result.pushStatus === "sent"
+                );
+            }
+
+            // Security company
+            return result.status === "sent";
+        });
+
+        const failedResults = results.filter((result) => {
+            // Trusted contact
+            if (result.type === "trusted_contact") {
+                return (
+                    result.smsStatus !== "sent" &&
+                    result.pushStatus !== "sent"
+                );
+            }
+
+            // Security company
+            return result.status === "failed";
+        });
+
+        const sentCount = deliveredResults.length;
+
+        const failedCount = failedResults.length;
 
         // ==========================================
         // 11. UPDATE ALERT STATUS
         // ==========================================
 
         if (sentCount > 0 && failedCount === 0) {
+
             alert.status = "sent";
-        } else if (sentCount > 0 && failedCount > 0) {
+
+        } else if (
+            sentCount > 0 &&
+            failedCount > 0
+        ) {
+
             alert.status = "partial";
+
         } else {
+
             alert.status = "failed";
         }
 
@@ -280,27 +414,33 @@ exports.sendSOS = async (req, res) => {
             securityCompany: securityCompany
                 ? {
                     id: securityCompany._id,
-                    name: securityCompany.companyName,
-                    phone: securityCompany.phoneNumber,
+                    name:
+                        securityCompany.companyName,
+                    phone:
+                        securityCompany.phoneNumber,
                 }
                 : null,
 
             sentCount,
+
             failedCount,
 
             results,
         });
 
     } catch (error) {
-        console.error("SOS ERROR:", error);
+
+        console.error(
+            "SOS ERROR:",
+            error
+        );
 
         return res.status(500).json({
-            message: "Failed to process SOS alert",
+            message:
+                "Failed to process SOS alert",
             error: error.message,
         });
     }
-
-
 };
 
 exports.getAllAlerts = async (req, res) => {
@@ -408,7 +548,7 @@ exports.updateIncidentStatus = async (req, res) => {
         if (
             !alert.assignedOfficer ||
             alert.assignedOfficer.toString() !==
-                officer._id.toString()
+            officer._id.toString()
         ) {
             return res.status(403).json({
                 message:
@@ -503,7 +643,7 @@ exports.assignOfficer = async (req, res) => {
         if (
             !alert.securityCompany?.id ||
             alert.securityCompany.id.toString() !==
-                req.company._id.toString()
+            req.company._id.toString()
         ) {
             return res.status(403).json({
                 message:
@@ -574,7 +714,7 @@ exports.assignOfficer = async (req, res) => {
         const location =
             alert.locationUrl ||
             (alert.latitude != null &&
-            alert.longitude != null
+                alert.longitude != null
                 ? `https://maps.google.com/?q=${alert.latitude},${alert.longitude}`
                 : "Location unavailable");
 
